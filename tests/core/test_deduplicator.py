@@ -18,6 +18,7 @@ from synthetic_data_factory.core.deduplicator import (
     default_text_of,
     jaccard,
     optimal_bands,
+    similarity_bucket,
 )
 from synthetic_data_factory.core.shingler import TextShingler, normalize_text
 from synthetic_data_factory.schemas import InstructionSample, MinHashConfig
@@ -429,3 +430,38 @@ def test_concurrent_inserts_of_distinct_documents_lose_nothing() -> None:
     assert results == [None] * 100
     assert len(index) == index.stats.documents == 100
     assert sorted(index._ordinal_of.values()) == list(range(100))
+
+
+# --------------------------------------------------------------------------- #
+# Similarity histogram telemetry                                              #
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize(
+    ("similarity", "bucket"),
+    [(0.0, 0), (0.4999, 0), (0.5, 1), (0.6999, 1), (0.7, 2), (0.8499, 2), (0.85, 3), (1.0, 3)],
+)
+def test_similarity_bucket_edges_are_lower_inclusive(similarity: float, bucket: int) -> None:
+    assert similarity_bucket(similarity) == bucket
+
+
+def test_histogram_records_every_verified_candidate() -> None:
+    index = CollidingIndex(CONFIG)  # every insert verifies against all previous documents
+    base = long_text(1).split()
+    variants = [
+        base,
+        base[:57] + ["a", "b", "c"],
+        base[:30] + long_text(2).split()[:30],
+        long_text(3).split(),
+    ]
+    for n, tokens in enumerate(variants):
+        index.add_if_unique(f"d{n}", " ".join(tokens))
+    stats = index.stats
+    assert sum(stats.similarity_histogram) == stats.candidate_checks
+    assert len(stats.similarity_histogram) == 4
+    assert stats.similarity_histogram[3] >= 1  # the near-duplicate variant
+    assert stats.similarity_histogram[0] >= 1  # the unrelated document
+
+
+def test_fresh_index_has_empty_histogram() -> None:
+    assert MinHashLSHIndex(CONFIG).stats.similarity_histogram == (0, 0, 0, 0)

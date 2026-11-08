@@ -35,6 +35,7 @@ that reaches the cap without a match is counted in
 ``IndexStats.truncated_queries``, so truncation is observable, never silent.
 """
 
+import bisect
 import hashlib
 import heapq
 import threading
@@ -51,6 +52,8 @@ from synthetic_data_factory.schemas import CurationMetrics, InstructionSample, M
 
 MERSENNE_PRIME_31: Final = (1 << 31) - 1
 DEFAULT_MAX_CANDIDATES: Final = 1_024
+SIMILARITY_BUCKET_EDGES: Final = (0.5, 0.7, 0.85)
+"""Histogram buckets of verified candidate similarity: [0, .5) [.5, .7) [.7, .85) [.85, 1]."""
 _MAX_BLOCK_ELEMENTS: Final = 1 << 20  # caps the (num_perm x block) temporary at 8 MiB
 _PERMUTATION_PERSON: Final = b"sdf/minhash/perm"
 _BAND_PERSON: Final = b"sdf/minhash/band"
@@ -66,6 +69,11 @@ def jaccard(a: Set[int], b: Set[int]) -> float:
     small, large = (a, b) if len(a) <= len(b) else (b, a)
     intersection = sum(1 for item in small if item in large)
     return intersection / (len(a) + len(b) - intersection)
+
+
+def similarity_bucket(similarity: float) -> int:
+    """Index into :data:`SIMILARITY_BUCKET_EDGES` buckets; each lower edge is inclusive."""
+    return bisect.bisect_right(SIMILARITY_BUCKET_EDGES, similarity)
 
 
 def optimal_bands(num_perm: int, threshold: float) -> tuple[int, int]:
@@ -106,6 +114,8 @@ class IndexStats:
     rows: int
     candidate_checks: int
     truncated_queries: int
+    similarity_histogram: tuple[int, ...]
+    """Exact Jaccard of every verified candidate, bucketed by :data:`SIMILARITY_BUCKET_EDGES`."""
 
 
 class MinHashLSHIndex:
@@ -140,6 +150,7 @@ class MinHashLSHIndex:
         self._lock: Final = threading.Lock()
         self._candidate_checks = 0
         self._truncated_queries = 0
+        self._similarity_counts = [0] * (len(SIMILARITY_BUCKET_EDGES) + 1)
 
     def __len__(self) -> int:
         return len(self._keys)
@@ -156,6 +167,7 @@ class MinHashLSHIndex:
                 rows=self.rows,
                 candidate_checks=self._candidate_checks,
                 truncated_queries=self._truncated_queries,
+                similarity_histogram=tuple(self._similarity_counts),
             )
 
     # ------------------------------------------------------------------ #
@@ -262,7 +274,9 @@ class MinHashLSHIndex:
                 self._truncated_queries += 1
                 break
             checks += 1
-            if jaccard(features, self._features[ordinal]) >= threshold:
+            similarity = jaccard(features, self._features[ordinal])
+            self._similarity_counts[similarity_bucket(similarity)] += 1
+            if similarity >= threshold:
                 self._candidate_checks += checks
                 return self._keys[ordinal]
         self._candidate_checks += checks
