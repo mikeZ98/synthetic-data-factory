@@ -110,7 +110,9 @@ def test_models_round_trip_through_arrow_exactly(batch: list[InstructionSample])
     assert table_to_samples(samples_to_record_batch(batch)) == batch
 
 
-@settings(max_examples=60)
+# deadline=None: Parquet encode/decode is I/O-bound; a wall-clock deadline turns
+# machine load into spurious failures (observed once under the coverage gate).
+@settings(max_examples=60, deadline=None)
 @given(st.lists(samples(), min_size=1, max_size=8))
 def test_models_round_trip_through_parquet_without_type_drift(
     batch: list[InstructionSample],
@@ -357,6 +359,7 @@ def test_polars_dtypes_are_stable() -> None:
     ]
 
 
+@settings(deadline=None)
 @given(st.lists(samples(), max_size=6))
 def test_polars_round_trip_is_exact(batch: list[InstructionSample]) -> None:
     table = samples_to_table(batch)
