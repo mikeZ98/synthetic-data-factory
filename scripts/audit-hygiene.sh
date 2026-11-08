@@ -18,7 +18,9 @@ fail() {
 }
 
 # Each pattern is split with a bracket class so this script never matches itself.
-readonly HOST_PATH_RE='/[U]sers/|/[V]olumes/|/[h]ome/[A-Za-z0-9._-]+|/[p]rivate/(var|tmp)/|/[v]ar/folders/|/[o]pt/homebrew|[C]:\\{1,2}Users\\{1,2}|[C]:/[U]sers/|~/[L]ibrary/'
+# A segment starting with '<' is a documentation placeholder (/Volumes/<SSD_NAME>/...),
+# not a machine path, so it is allowed.
+readonly HOST_PATH_RE='/[U]sers/[^<]|/[V]olumes/[^<]|/[h]ome/[A-Za-z0-9._-]+|/[p]rivate/(var|tmp)/|/[v]ar/folders/|/[o]pt/homebrew|[C]:\\{1,2}Users\\{1,2}|[C]:/[U]sers/|~/[L]ibrary/'
 readonly MAC_ARTIFACT_RE='(^|/)(\.[D]S_Store|\._[^/]*|__[M]ACOSX|\.[A]ppleDouble|\.[S]potlight-V100|\.[T]rashes|Icon'$'\r'')(/|$)'
 readonly STRAY_CACHE_RE='(^|/)(\.[p]ytest_cache|\.[m]ypy_cache|\.[r]uff_cache|\.[h]ypothesis|__[p]ycache__|\.[c]overage(\..*)?|[h]tmlcov|[c]overage\.(xml|json)|\.[b]enchmarks|\.[t]ox|\.[n]ox)(/|$)'
 
