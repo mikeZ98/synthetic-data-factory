@@ -57,8 +57,9 @@ class InstructionSample(ContractModel):
     instruction: LongText
     response: LongText
     domain: DomainLabel
-    metadata: Annotated[
-        dict[MetadataKey, ShortText],
-        Field(default_factory=dict, max_length=MAX_METADATA_ENTRIES),
-    ]
+    # Default given by assignment, not inside Annotated, so the pydantic mypy
+    # plugin sees it and does not demand ``metadata=`` at every call site.
+    metadata: dict[MetadataKey, ShortText] = Field(
+        default_factory=dict, max_length=MAX_METADATA_ENTRIES
+    )
     created_at_utc: UtcDatetime
