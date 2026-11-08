@@ -1,0 +1,17 @@
+name: Set up the locked Python environment
+description: Install pinned uv, restore its cache from ./.cache/uv, and sync uv.lock exactly.
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        version: "0.11.7"
+        enable-cache: true
+        cache-dependency-glob: uv.lock
+        cache-local-path: ${{ github.workspace }}/.cache/uv
+
+    - name: Sync locked environment
+      shell: bash
+      run: uv sync --locked

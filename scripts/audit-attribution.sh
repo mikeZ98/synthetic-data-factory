@@ -6,8 +6,17 @@
 #   * carries a git trailer (Co-authored-by, Signed-off-by, ...),
 #   * contains AI/tool attribution filler in its message,
 #   * has a subject that is not a Conventional Commit.
-# Also fails if the repo-local identity would produce a non-canonical commit.
+# Also fails if the repo-local identity would produce a non-canonical commit,
+# unless --history-only is given (CI runners audit history but never commit).
 set -euo pipefail
+
+history_only=0
+for arg in "$@"; do
+    case "$arg" in
+        --history-only) history_only=1 ;;
+        *) printf 'usage: %s [--history-only]\n' "$0" >&2; exit 2 ;;
+    esac
+done
 
 readonly EXPECTED_NAME="mikeZ98"
 readonly EXPECTED_EMAIL="145975972+mikeZ98@users.noreply.github.com"
@@ -23,12 +32,14 @@ fail() {
 }
 
 # 1. Identity that the *next* commit will use.
-configured_name="$(git config user.name || true)"
-configured_email="$(git config user.email || true)"
-[ "$configured_name" = "$EXPECTED_NAME" ] \
-    || fail "configured user.name is '${configured_name}', expected '${EXPECTED_NAME}'"
-[ "$configured_email" = "$EXPECTED_EMAIL" ] \
-    || fail "configured user.email is '${configured_email}', expected '${EXPECTED_EMAIL}'"
+if [ "$history_only" -eq 0 ]; then
+    configured_name="$(git config user.name || true)"
+    configured_email="$(git config user.email || true)"
+    [ "$configured_name" = "$EXPECTED_NAME" ] \
+        || fail "configured user.name is '${configured_name}', expected '${EXPECTED_NAME}'"
+    [ "$configured_email" = "$EXPECTED_EMAIL" ] \
+        || fail "configured user.email is '${configured_email}', expected '${EXPECTED_EMAIL}'"
+fi
 
 # 2. History.
 if ! git rev-parse --verify --quiet HEAD >/dev/null; then
