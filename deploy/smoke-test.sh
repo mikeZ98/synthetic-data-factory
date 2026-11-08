@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Container smoke test. Needs only Docker on the host: test data is generated
 # by the image itself and results are checked with the image's own pyarrow.
+# Data lives in a throwaway *named volume*, never a host bind mount, so the
+# test behaves identically on Docker Desktop, Colima (whatever its VM mounts)
+# and Linux CI, and needs no permission workarounds: Docker initialises the
+# volume from the image's /data, which is owned by UID 10001.
 #
 #   deploy/smoke-test.sh [IMAGE]        (default: synthetic-data-factory:v0.1.0)
 #
@@ -14,7 +18,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 readonly IMAGE="${1:-synthetic-data-factory:v0.1.0}"
 readonly NAME="sdf-smoke-$$"
-readonly DATA=".cache/docker-smoke/$$"
+readonly VOLUME="sdf-smoke-$$"
 readonly HARDENED=(--read-only --tmpfs "/tmp:rw,noexec,nosuid,size=64m" --network none
     --cap-drop ALL --security-opt no-new-privileges:true)
 
@@ -23,18 +27,13 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 cleanup() {
     docker rm -f "$NAME" >/dev/null 2>&1 || true
-    if [ -d "$DATA" ]; then
-        # Files are owned by UID 10001 on Linux hosts: delete them as that user.
-        docker run --rm -v "$PWD/$DATA:/data" --entrypoint sh "$IMAGE" -c 'rm -rf /data/* /data/.[!.]*' || true
-        rm -rf "$DATA"
-    fi
+    docker volume rm -f "$VOLUME" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
-mkdir -p "$DATA"
-chmod 0777 "$DATA"  # writable by the container's UID 10001 on any host
+docker volume create "$VOLUME" >/dev/null
 
-run_in() { docker run --rm "${HARDENED[@]}" -v "$PWD/$DATA:/data" "$@"; }
+run_in() { docker run --rm "${HARDENED[@]}" -v "$VOLUME:/data" "$@"; }
 
 step "CLI help (default CMD)"
 docker run --rm "$IMAGE" | grep -q "usage: synthetic-data-factory" || fail "help output"
@@ -97,7 +96,7 @@ with open("/data/big.jsonl", "w") as f:
             "instruction": f"record {n} about subject {n % 977} with several shared words", "response": "ok",
             "domain": "edu", "created_at_utc": (dt.datetime(2026, 1, 1, tzinfo=dt.UTC) + dt.timedelta(seconds=n)).isoformat()}) + "\n")
 '
-docker run -d --name "$NAME" "${HARDENED[@]}" -v "$PWD/$DATA:/data" "$IMAGE" \
+docker run -d --name "$NAME" "${HARDENED[@]}" -v "$VOLUME:/data" "$IMAGE" \
     big.jsonl -o out/stopped.parquet --headless >/dev/null
 sleep 6
 docker stop --time 60 "$NAME" >/dev/null
@@ -107,7 +106,7 @@ partial="$(run_in --entrypoint python "$IMAGE" -c \
     'import pyarrow.parquet as pq; print(pq.read_table("/data/out/stopped.parquet").num_rows)')"
 [ "$partial" -gt 0 ] || fail "no rows committed on graceful stop"
 [ "$partial" -lt 300000 ] || fail "run finished before SIGTERM; signal path not exercised"
-leftovers="$(find "$DATA" -name '.tmp.*' | wc -l | tr -d ' ')"
+leftovers="$(run_in --entrypoint sh "$IMAGE" -c "find /data -name '.tmp.*' | wc -l" | tr -d ' ')"
 [ "$leftovers" = "0" ] || fail "$leftovers temporary files left behind"
 printf '   committed %s of 300000 records before stopping\n' "$partial"
 
