@@ -120,15 +120,14 @@ class AtomicParquetSink:
         tmp = self.path.parent / f"{TMP_PREFIX}{uuid.uuid4().hex}.parquet"
         handle = tmp.open("xb")
         try:
+            # The Arrow schema is stored in the footer by default (store_schema);
+            # _verify() fails the commit if that ever stops round-tripping.
             writer = pq.ParquetWriter(
-                handle,
-                INSTRUCTION_SAMPLE_SCHEMA,
-                compression=self.spec.compression,
-                store_schema=True,
+                handle, INSTRUCTION_SAMPLE_SCHEMA, compression=self.spec.compression
             )
         except BaseException:
             handle.close()
-            tmp.unlink(missing_ok=True)
+            tmp.unlink()  # created by the exclusive open just above
             raise
         self._open = _OpenFile(tmp, handle, writer)
         self._state = SinkState.OPEN
@@ -159,7 +158,7 @@ class AtomicParquetSink:
         if self._state in (SinkState.COMMITTED, SinkState.ABORTED):
             return
         opened, self._open = self._open, None
-        self._buffer, self._buffered = [], 0
+        self._buffer = []  # release buffered batches; the sink is terminal from here
         self._state = SinkState.ABORTED
         if opened is None:
             return
@@ -222,7 +221,7 @@ class AtomicParquetSink:
     def _flush(self, *, final: bool) -> None:
         writer = self._resources().writer
         size = self.spec.row_group_size
-        table = pa.Table.from_batches(self._buffer, schema=INSTRUCTION_SAMPLE_SCHEMA)
+        table = pa.Table.from_batches(self._buffer)  # never empty: callers flush only with rows
         count = table.num_rows if final else table.num_rows // size * size
         try:
             writer.write_table(table.slice(0, count), row_group_size=size)
@@ -247,7 +246,9 @@ class AtomicParquetSink:
         if metadata.num_rows != self._rows:
             problems.append(f"row count {metadata.num_rows} != {self._rows} written")
         size = self.spec.row_group_size
-        if any(n != size for n in group_sizes[:-1]) or any(n > size for n in group_sizes[-1:]):
+        short = [n for n in group_sizes[:-1] if n != size]  # every group but the last is full
+        oversized = [n for n in group_sizes if n > size]
+        if short or oversized:
             problems.append(f"row groups {group_sizes} violate row_group_size={size}")
         if problems:
             raise ExportValidationError("; ".join(problems))

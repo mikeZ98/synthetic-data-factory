@@ -142,7 +142,8 @@ class MinHashLSHIndex:
         self.bands, self.rows = optimal_bands(config.num_perm, config.threshold)
         self._text_of: Final = text_of
         self._a, self._b = _permutation_params(config.num_perm, seed)
-        self._block: Final = max(1, _MAX_BLOCK_ELEMENTS // config.num_perm)
+        # num_perm <= MAX_NUM_PERM (4096), so the block is at least 256 columns.
+        self._block: Final = _MAX_BLOCK_ELEMENTS // config.num_perm
         self._buckets: Final[list[dict[int, list[int]]]] = [{} for _ in range(self.bands)]
         self._features: Final[list[frozenset[int]]] = []
         self._keys: Final[list[str]] = []
@@ -260,7 +261,7 @@ class MinHashLSHIndex:
             for table, band_key in zip(self._buckets, band_keys, strict=True)
             if (bucket := table.get(band_key)) is not None
         ]
-        previous = -1
+        previous: int | None = None
         for ordinal in heapq.merge(*buckets):
             if ordinal != previous:
                 previous = ordinal
