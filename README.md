@@ -15,6 +15,20 @@ Keys: `p` pause/resume, `c` stop gracefully (commit what was processed), `q` qui
 the UI open. A second quit or signal while stopping forces cancellation: the output
 is discarded atomically and the exit code is 130.
 
+## Container
+
+```sh
+docker build -f deploy/Dockerfile -t synthetic-data-factory:v0.1.0 .
+deploy/smoke-test.sh                       # non-root, no dev tooling, read-only run, graceful SIGTERM
+SDF_INPUT=in.jsonl docker compose -f deploy/docker-compose.yml --profile batch up --exit-code-from curate
+```
+
+The runtime image is non-root (UID 10001), contains no pip/uv/compiler, ships
+checked-hash bytecode for every module, and is bit-for-bit reproducible when
+built with `SOURCE_DATE_EPOCH` and `rewrite-timestamp=true`. Compose runs it with
+a read-only root filesystem, no network, no capabilities, and CPU/memory limits;
+data lives in `SDF_DATA_DIR` (default `./.cache/data`).
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+. All tool state

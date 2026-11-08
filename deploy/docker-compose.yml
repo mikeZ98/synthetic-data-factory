@@ -1,0 +1,52 @@
+# Batch curation runner.
+#
+#   docker compose -f deploy/docker-compose.yml --profile batch build
+#   SDF_INPUT=in.jsonl docker compose -f deploy/docker-compose.yml --profile batch up --abort-on-container-exit
+#   docker compose -f deploy/docker-compose.yml run --rm curate in.jsonl -o out/x.parquet   # interactive TUI
+#
+# SDF_DATA_DIR (host directory mounted read-write at /data) defaults to the
+# repository's ./.cache/data so local runs never write outside ./.cache/.
+# Inputs and the output path are relative to that directory.
+
+name: synthetic-data-factory
+
+services:
+  curate:
+    profiles: ["batch"]
+    image: synthetic-data-factory:v0.1.0
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    user: "10001:10001"
+    working_dir: /data
+    command:
+      - "${SDF_INPUT:-input.jsonl}"
+      - "--output"
+      - "${SDF_OUTPUT:-out/curated.parquet}"
+      - "--headless"
+      - "--auto-exit"
+    volumes:
+      - type: bind
+        source: ${SDF_DATA_DIR:-../.cache/data}
+        target: /data
+        read_only: false
+        bind:
+          create_host_path: true
+    # Hardening: immutable root filesystem, size-capped scratch, no network, no privileges.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    network_mode: none
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Resource bounds.
+    cpus: "2.0"
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 256
+    # SIGTERM triggers the graceful drain: queued records are processed and the
+    # atomic Parquet sink commits before exit 0. Give it time before SIGKILL.
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
+    restart: "no"
