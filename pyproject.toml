@@ -16,6 +16,9 @@ dependencies = [
     "textual>=0.70.0",
 ]
 
+[project.scripts]
+synthetic-data-factory = "synthetic_data_factory.cli:main"
+
 [dependency-groups]
 dev = [
     "bandit[toml]>=1.7.9",

@@ -3,6 +3,18 @@
 Curation pipeline for synthetic instruction datasets: strict data contracts,
 MinHash near-duplicate removal, and Parquet export.
 
+## Usage
+
+```sh
+uv run synthetic-data-factory data/*.jsonl more.parquet -o out/curated.parquet
+# or: uv run python -m synthetic_data_factory.tui ...   (--headless --auto-exit for scripts)
+```
+
+Keys: `p` pause/resume, `c` stop gracefully (commit what was processed), `q` quit.
+`SIGINT`/`SIGTERM` stop gracefully and exit 0; `SIGUSR1` stops gracefully and keeps
+the UI open. A second quit or signal while stopping forces cancellation: the output
+is discarded atomically and the exit code is 130.
+
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+. All tool state
