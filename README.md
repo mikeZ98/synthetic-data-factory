@@ -1,16 +1,18 @@
 # synthetic-data-factory
 
+[![ci](https://github.com/mikeZ98/synthetic-data-factory/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mikeZ98/synthetic-data-factory/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue.svg)](pyproject.toml)
+[![Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](pyproject.toml)
+![mypy](https://img.shields.io/badge/mypy-strict%2C%200%20errors-blue)
+![coverage](https://img.shields.io/badge/coverage-100%25%20line%20%2B%20branch-brightgreen)
+![tests](https://img.shields.io/badge/tests-619%20passed%2C%20network--free-brightgreen)
+![commits](https://img.shields.io/badge/commits-sole%20committer%20audited-lightgrey)
+![mutation](https://img.shields.io/badge/mutation%20score-100%25%20(257%2F257%20non--equivalent)-brightgreen)
+![image](https://img.shields.io/badge/container-bit--for--bit%20reproducible-blue)
+
 Curation pipeline for synthetic instruction datasets: strict data contracts,
 MinHash LSH near-duplicate removal with exact Jaccard verification, atomic
 Parquet export, and a live terminal dashboard.
-
-[![ci](https://github.com/mikeZ98/synthetic-data-factory/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mikeZ98/synthetic-data-factory/actions/workflows/ci.yml)
-![coverage](https://img.shields.io/badge/coverage-100%25%20line%20%2B%20branch-brightgreen)
-![tests](https://img.shields.io/badge/tests-619%20passed%2C%20network--free-brightgreen)
-![mypy](https://img.shields.io/badge/mypy-strict%2C%200%20errors-blue)
-![mutation](https://img.shields.io/badge/mutation%20score-100%25%20(257%2F257%20non--equivalent)-brightgreen)
-![image](https://img.shields.io/badge/container-bit--for--bit%20reproducible-blue)
-![commits](https://img.shields.io/badge/commits-sole%20committer%20audited-lightgrey)
 
 Static badges record the `v0.1.0` baseline; the CI badge is live. Every number
 in this document comes from a command you can rerun, and each section names it.
