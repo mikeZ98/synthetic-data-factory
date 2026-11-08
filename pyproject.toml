@@ -47,7 +47,7 @@ cache-dir = "./.cache/uv"
 cache-dir = ".cache/ruff"
 target-version = "py312"
 line-length = 100
-src = ["src", "tests"]
+src = ["src", "tests", "tools"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "S"]
@@ -57,7 +57,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "S"]
 "tests/**/*.py" = ["S101"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["synthetic_data_factory"]
+known-first-party = ["synthetic_data_factory", "tools"]
 
 [tool.ruff.format]
 docstring-code-format = true
@@ -66,7 +66,7 @@ docstring-code-format = true
 cache_dir = ".cache/mypy"
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "tools"]
 mypy_path = "src"
 plugins = ["pydantic.mypy"]
 warn_unreachable = true
@@ -85,6 +85,8 @@ ignore_missing_imports = true
 cache_dir = ".cache/pytest"
 minversion = "8.2"
 testpaths = ["tests"]
+# Repository root on sys.path so tests can import the dev tooling package ``tools``.
+pythonpath = ["."]
 # --disable-socket: any AF_INET/AF_INET6 socket raises SocketBlockedError.
 # --allow-unix-socket: asyncio's self-pipe on macOS is an AF_UNIX socketpair (local IPC, not network).
 addopts = [
@@ -105,7 +107,7 @@ asyncio_default_fixture_loop_scope = "function"
 [tool.coverage.run]
 data_file = ".cache/coverage/.coverage"
 branch = true
-source = ["synthetic_data_factory"]
+source = ["synthetic_data_factory", "tools"]
 relative_files = true
 
 [tool.coverage.report]
@@ -113,7 +115,7 @@ fail_under = 100
 precision = 2
 show_missing = true
 skip_covered = false
-exclude_also = ["if TYPE_CHECKING:", "@overload"]
+exclude_also = ["if TYPE_CHECKING:", "@overload", "if __name__ == .__main__.:"]
 
 [tool.coverage.html]
 directory = ".cache/coverage/html"

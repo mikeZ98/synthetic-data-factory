@@ -391,3 +391,85 @@ async def test_sink_plugs_into_curation_pipeline(tmp_path: Path) -> None:
         metrics = await CurationPipeline(index, sink=sink, batch_size=16).run(source())
     assert metrics.raw_count == 100
     assert metrics.deduped_count == pq.read_table(sink.path).num_rows == 50
+
+
+# --------------------------------------------------------------------------- #
+# Mutation hardening: behaviours surfaced by tools/mutation.py survivors      #
+# --------------------------------------------------------------------------- #
+
+
+def _open_fds() -> int:
+    return len(os.listdir("/dev/fd"))
+
+
+def test_commit_and_abort_leak_no_file_descriptors(tmp_path: Path) -> None:
+    baseline = _open_fds()
+    with AtomicParquetSink(spec(), root=tmp_path) as sink:
+        sink.write(SAMPLES[:10])
+    assert _open_fds() == baseline  # includes the directory fd opened for fsync
+    aborted = AtomicParquetSink(spec("b.parquet"), root=tmp_path).open()
+    aborted.abort()
+    assert _open_fds() == baseline
+
+
+def test_file_contents_are_flushed_before_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    synced_sizes: list[int] = []
+    real_fsync = os.fsync
+
+    def fsync(fd: int) -> None:
+        synced_sizes.append(os.fstat(fd).st_size)
+        real_fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fsync)
+    with AtomicParquetSink(spec(), root=tmp_path) as sink:
+        sink.write(SAMPLES[:500])
+    assert synced_sizes[0] == sink.path.stat().st_size > 0  # durable bytes == final bytes
+
+
+def test_abort_closes_the_writer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    closed: list[object] = []
+    real_close = pq.ParquetWriter.close
+
+    def close(self: pq.ParquetWriter) -> None:
+        closed.append(self)
+        real_close(self)
+
+    sink = AtomicParquetSink(spec(), root=tmp_path).open()
+    sink.write(SAMPLES[:10])
+    monkeypatch.setattr(pq.ParquetWriter, "close", close)
+    sink.abort()
+    assert len(closed) == 1
+
+
+def test_abort_tolerates_a_temp_file_removed_externally(tmp_path: Path) -> None:
+    sink = AtomicParquetSink(spec(), root=tmp_path).open()
+    assert sink.temp_path is not None
+    sink.temp_path.unlink()  # e.g. an operator cleaned the directory
+    sink.abort()
+    assert sink.state is SinkState.ABORTED
+
+
+def test_exact_multiple_of_row_group_size_commits(tmp_path: Path) -> None:
+    with AtomicParquetSink(spec(), root=tmp_path) as sink:
+        sink.write(SAMPLES[: 2 * RGS])
+    assert group_sizes(sink.path) == [RGS, RGS]
+
+
+@pytest.mark.parametrize(
+    "groups",
+    [[RGS, RGS + 1], [RGS, 4, 6], [RGS + 1]],
+    ids=["oversized-last", "short-middle", "single-oversized"],
+)
+def test_verification_rejects_each_layout_violation_independently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, groups: list[int]
+) -> None:
+    sink = AtomicParquetSink(spec(), root=tmp_path).open()
+    sink.write(SAMPLES[: sum(groups)] if sum(groups) <= len(SAMPLES) else SAMPLES)
+    sink._rows = sum(groups)  # isolate the layout check from the row-count check
+    monkeypatch.setattr(pq, "ParquetFile", _fake_parquet_file(INSTRUCTION_SAMPLE_SCHEMA, groups))
+    with pytest.raises(ExportValidationError, match="row groups"):
+        sink.commit()
+    monkeypatch.undo()
+    assert stray_temp_files(tmp_path) == []

@@ -223,3 +223,10 @@ def test_modes_are_domain_separated() -> None:
 def test_normalization_equivalent_texts_share_hashes() -> None:
     shingler = TextShingler(2)
     assert shingler.hash_set("Café au LAIT") == shingler.hash_set("café   au\tlait")
+
+
+def test_seed_bounds_are_the_literal_uint64_range() -> None:
+    # Literal values, not the module constant: a drifted constant must not pass.
+    assert TextShingler(2, seed=18_446_744_073_709_551_615).seed == 2**64 - 1
+    with pytest.raises(ValueError, match="seed must be"):
+        TextShingler(2, seed=18_446_744_073_709_551_616)

@@ -31,6 +31,7 @@ uv run --locked bandit -c pyproject.toml -r src
 scripts/coverage-gate.sh       # network-free tests, 100.00% line + branch coverage
 scripts/audit-hygiene.sh       # no host paths, no macOS artifacts, caches isolated
 scripts/audit-attribution.sh   # sole committer, Conventional Commits, no trailers
+scripts/run-mutation-tests.sh  # AST mutation gate (minutes; per-target minimums in tools/mutation.toml)
 ```
 
 The test suite runs with network sockets disabled (`pytest-socket`); any test

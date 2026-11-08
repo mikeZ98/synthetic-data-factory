@@ -1,0 +1,71 @@
+# AST mutation testing configuration. Run: scripts/run-mutation-tests.sh
+#
+# Equivalent mutants (survivors that cannot change observable behaviour) are
+# listed under [[equivalent]] with a justification. They leave the score's
+# denominator; an entry that stops matching a surviving mutant fails the run.
+
+[mutation]
+src_dir = "src"
+package = "synthetic_data_factory"
+pytest_args = ["--hypothesis-profile=ci"]
+timeout_factor = 4.0
+min_timeout = 30.0
+
+[[target]]
+path = "synthetic_data_factory/core/shingler.py"
+tests = ["tests/core/test_shingler.py", "tests/core/test_deduplicator.py"]
+minimum = 100.0  # ratcheted from the 95% baseline once achieved
+
+[[target]]
+path = "synthetic_data_factory/core/deduplicator.py"
+tests = ["tests/core/test_deduplicator.py", "tests/core/test_fuzz_invariants.py"]
+minimum = 100.0
+
+[[target]]
+path = "synthetic_data_factory/transport/parquet_sink.py"
+tests = ["tests/transport/test_parquet_sink.py", "tests/transport/test_sink_invariants.py"]
+minimum = 100.0
+
+# --------------------------------------------------------------------------- #
+# Equivalent mutants: each was checked by hand against the code.              #
+# --------------------------------------------------------------------------- #
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::jaccard::negate::(a, b) if len(a) <= len(b) else (b, a) => (a, b) if not len(a) <= len(b) else (b, a)#1"
+reason = "Chooses which set to iterate. |A & B| is symmetric and the denominator uses len(a) + len(b), so only speed changes."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::jaccard::cmp::len(a) <= len(b) => len(a) < len(b)#1"
+reason = "Differs only for equal lengths, where iterating either set yields the same (symmetric) intersection count."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::optimal_bands::const::1 => 2#3"
+reason = "range(1, num_perm + 2) only adds b = num_perm + 1, which never divides num_perm and is filtered out."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex.signature::kwarg::np.fromiter(features, dtype=np.uint64, count=len(features)) => np.fromiter(features, dtype=np.uint64)#1"
+reason = "count= is a preallocation hint for np.fromiter; the resulting array is identical."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._band_keys::kwarg::signature.astype('<u8', copy=False) => signature.astype('<u8')#1"
+reason = "copy= controls aliasing only; the array is read, never written, so values and band keys are identical."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._band_keys::const::False => True#1"
+reason = "astype(copy=True) forces a copy of a read-only temporary; identical values and band keys."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._candidates_locked::kwarg::zip(self._buckets, band_keys, strict=True) => zip(self._buckets, band_keys)#1"
+reason = "Both sequences have length self.bands by construction (_band_keys reshapes to bands rows); strict= is a guard that cannot fire."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._candidates_locked::const::True => False#1"
+reason = "Same as above: lengths are equal by construction, so strict=False never changes the iteration."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._insert_locked::kwarg::zip(self._buckets, band_keys, strict=True) => zip(self._buckets, band_keys)#1"
+reason = "Both sequences have length self.bands by construction; strict= is a guard that cannot fire."
+
+[[equivalent]]
+id = "synthetic_data_factory/core/deduplicator.py::MinHashLSHIndex._insert_locked::const::True => False#1"
+reason = "Same as above: lengths are equal by construction, so strict=False never changes the iteration."

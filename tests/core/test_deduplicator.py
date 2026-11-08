@@ -465,3 +465,59 @@ def test_histogram_records_every_verified_candidate() -> None:
 
 def test_fresh_index_has_empty_histogram() -> None:
     assert MinHashLSHIndex(CONFIG).stats.similarity_histogram == (0, 0, 0, 0)
+
+
+# --------------------------------------------------------------------------- #
+# Mutation hardening: behaviours surfaced by tools/mutation.py survivors      #
+# --------------------------------------------------------------------------- #
+
+
+def test_band_keys_match_golden_values() -> None:
+    """Band keys are a documented determinism contract (little-endian, keyed BLAKE2b-64)."""
+    index = MinHashLSHIndex(MinHashConfig(threshold=0.8, num_perm=128, shingle_k=3))
+    keys = index._band_keys(index.signature(index.features("abc def ghi")))
+    assert keys == [
+        7068664221576159358,
+        18241810784700163046,
+        5799377536952102772,
+        3566350595250430437,
+        5078452079930742785,
+        2110110392561367375,
+        11855813770757248162,
+        11072851353596485357,
+    ]
+
+
+def test_band_tie_break_prefers_fewer_bands_on_exact_float_tie() -> None:
+    # num_perm=2: inflections 1.0 (b=1, r=2) and 0.5 (b=2, r=1); 0.75 is exactly between.
+    assert abs(1.0 - 0.75) == abs(0.5 - 0.75)
+    assert optimal_bands(2, 0.75) == (1, 2)
+
+
+def test_default_candidate_cap_is_1024() -> None:
+    index = CollidingIndex(MinHashConfig(threshold=1.0, num_perm=16, shingle_k=3))
+    assert index.max_candidates == 1_024
+    for n in range(1_025):
+        index.add_if_unique(f"d{n}", f"w{n}")  # 1-word texts: singleton fingerprints
+    before = index.stats
+    assert index.query("unseen") is None
+    after = index.stats
+    assert after.candidate_checks - before.candidate_checks == 1_024
+    assert after.truncated_queries - before.truncated_queries == 1
+
+
+def test_single_candidate_cap_is_valid() -> None:
+    index = CollidingIndex(CONFIG, max_candidates=1)
+    index.add_if_unique("a", long_text(1))
+    index.add_if_unique("b", long_text(2))
+    assert index.query(long_text(2)) is None  # only the earliest candidate is verified
+    assert index.stats.truncated_queries >= 1
+
+
+def test_shingling_mode_and_seed_reach_the_shingler() -> None:
+    char_index = MinHashLSHIndex(CONFIG, mode="char", seed=99)
+    assert (char_index.shingler.mode, char_index.shingler.seed) == ("char", 99)
+    assert char_index.features("abcdef") == TextShingler(3, mode="char", seed=99).hash_set("abcdef")
+    assert MinHashLSHIndex(CONFIG).features("a b c d") != MinHashLSHIndex(CONFIG, seed=1).features(
+        "a b c d"
+    )
